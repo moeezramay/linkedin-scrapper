@@ -8,14 +8,6 @@ password = "police15@SA"
 actions.login(driver, email, password) # if email and password isnt given, it'll prompt in terminal
 person = Person("https://www.linkedin.com/in/mattsnowden/", driver=driver)
 
-print("Name:", person.name)
-print("About:", person.about)
-print("Experiences:", person.experiences)
-print("Educations:", person.educations)
-print("Interests:", person.interests)
-print("Accomplishments:", person.accomplishments)
-print("Jobs Title:", person.job_title)
-
 
 with open('person.csv', 'w', newline='', encoding='utf-8') as csvfile:
     fieldnames = ['Name', 'About', 'Experiences', 'Educations', 'Interests', 'Accomplishments', 'Job Title']
