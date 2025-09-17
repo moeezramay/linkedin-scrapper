@@ -1,25 +1,16 @@
 from linkedin_scraper import Person, actions, Company
 from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
+import csv
 import os
-
-# Set up Chrome options to use your specific Profile 4
-chrome_options = Options()
-chrome_options.add_argument("--user-data-dir=C:\\Users\\moeez\\AppData\\Local\\Google\\Chrome\\User Data")
-chrome_options.add_argument("--profile-directory=Profile 4")
-
-# Optional: Add these to make the browser less detectable as automation
-chrome_options.add_argument("--disable-blink-features=AutomationControlled")
-chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
-chrome_options.add_experimental_option('useAutomationExtension', False)
-
-driver = webdriver.Chrome(options=chrome_options)
+driver = webdriver.Chrome()
 
 email = os.getenv("LINKEDIN_USER")
 password = os.getenv("LINKEDIN_PASSWORD")
 actions.login(driver, email, password) 
 
+
 company = Company("https://ca.linkedin.com/company/google")
+
 print(company.employees)
 
 
