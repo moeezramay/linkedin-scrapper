@@ -1,42 +1,119 @@
+import os, time, random, sys
 import undetected_chromedriver as uc
-from linkedin_scraper import Person, actions, Company
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 import csv
-import os
-import time
+from datetime import datetime  # <-- added
+
+URL = "https://www.linkedin.com/company/codexon-edu/"
+
+def ping(driver, label):
+    try:
+        driver.execute_script("return 1")
+        svc_alive = getattr(driver, "service", None)
+        svc_ok = (hasattr(svc_alive, "is_connectable") and svc_alive.is_connectable())
+        print(f"[PING] {label} | session={driver.session_id} | svc_connectable={svc_ok} | url={driver.current_url}")
+    except Exception as e:
+        print(f"[PING-FAIL] {label}: {repr(e)}")
 
 options = uc.ChromeOptions()
-
+options.add_argument("--lang=en-US")
 driver = uc.Chrome(options=options)
 
-# Add options to make the browser appear more like a regular user
-options.add_argument('--disable-blink-features=AutomationControlled')
-options.add_experimental_option("excludeSwitches", ["enable-automation"])
-options.add_experimental_option('useAutomationExtension', False)
+try:
+    print("[STEP] open login")
+    driver.get("https://www.linkedin.com/login")
+    ping(driver, "login page loaded")
 
-# You might want to add a user-agent to appear more like a regular browser
-options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
+    print("[STEP] submit creds")
+    driver.find_element(By.NAME, "session_key").send_keys("")
+    driver.find_element(By.NAME, "session_password").send_keys("")
+    driver.find_element(By.CSS_SELECTOR, 'button[type="submit"]').click()
+    WebDriverWait(driver, 30).until(EC.any_of(
+        EC.url_contains("/feed"),
+        EC.presence_of_element_located((By.CSS_SELECTOR, 'img.global-nav__me-photo'))
+    ))
+    ping(driver, "post-login")
 
-# Initialize the undetected driver
-driver = uc.Chrome(options=options)
+    print("[STEP] go company people")
+    people_url = URL.rstrip("/") + "/people/"
+    driver.get(people_url)
+    WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.CSS_SELECTOR, "main")))
+    ping(driver, "people main present")
 
-# Execute CDP commands to further reduce detection
-driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {
-    'source': '''
-        Object.defineProperty(navigator, 'webdriver', {
-            get: () => undefined
-        })
-    '''
-})
+    print("[STEP] collect links")
+    seen = set()
+    last = 0
+    stagnant = 0
 
+    def collect():
+        anchors = driver.find_elements(By.CSS_SELECTOR, 'a[href*="/in/"]')
+        for a in anchors:
+            href = (a.get_attribute("href") or "").split("?")[0]
+            if "/in/" in href:
+                seen.add(href)
 
-email = os.getenv("LINKEDIN_USER")
-password = os.getenv("LINKEDIN_PASSWORD")
-actions.login(driver, email, password) 
+    while stagnant < 3:
+        before = len(seen)
+        collect()
 
+        # Try clicking "Show more results" if available
+        clicked = False
+        try:
+            btn = WebDriverWait(driver, 3).until(
+                EC.element_to_be_clickable(
+                    (By.CSS_SELECTOR, 'button.scaffold-finite-scroll__load-button:not([disabled])')
+                )
+            )
+            driver.execute_script("arguments[0].scrollIntoView({block:'center'});", btn)
+            time.sleep(random.uniform(0.5, 1.0))
+            btn.click()
+            clicked = True
+            # wait for new items to load (count must increase)
+            WebDriverWait(driver, 10).until(
+                lambda d: len(d.find_elements(By.CSS_SELECTOR, 'a[href*="/in/"]')) > before
+            )
+        except Exception:
+            pass # ignore, will scroll instead
 
-company = Company("https://ca.linkedin.com/company/google")
+        if not clicked:
+            driver.execute_script("window.scrollBy(0, document.body.scrollHeight);")
+            time.sleep(random.uniform(1.0, 1.7))
 
-print(company.employees)
+        collect()
+        print(f"[LOOP] links={len(seen)}")
+
+        if len(seen) == last:
+            stagnant += 1
+        else:
+            last = len(seen)
+            stagnant = 0
+
+    # save in csv
+    links = sorted(seen) 
+    slug = URL.strip("/").split("/")[-1] or "company"
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    outfile = f"employees_{slug}_{ts}.csv"
+
+    with open(outfile, "w", newline="", encoding="utf-8") as f:
+        w = csv.writer(f)
+        w.writerow(["profile_url"])
+        for href in links:
+            w.writerow([href])
+
+    print(f"[RESULT] wrote {len(links)} rows to {outfile}")
+
+except Exception as e:
+    print("[ERROR] raised:", repr(e))
+finally:
+    print("[STEP] quitting driver explicitly")
+    try:
+        driver.quit()
+        print("[OK] quit done")
+    except Exception as e:
+        print("[QUIT-ERROR]", repr(e))
+
 
 
 
