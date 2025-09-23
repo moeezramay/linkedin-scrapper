@@ -1,5 +1,4 @@
 import os, time, random, csv, sys
-from datetime import datetime
 import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -130,7 +129,6 @@ def scrape_people_links(driver, company_url):
     return sorted(seen)
 
 try:
-    # login once
     driver.get("https://www.linkedin.com/login")
     WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.NAME, "session_key")))
     driver.find_element(By.NAME, "session_key").send_keys(EMAIL)
@@ -141,7 +139,6 @@ try:
         EC.presence_of_element_located((By.CSS_SELECTOR, 'img.global-nav__me-photo'))
     ))
 
-    # open (append) and write header only if file didn't exist
     file_exists = os.path.exists(MASTER_OUTFILE)
     with open(MASTER_OUTFILE, "a", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
