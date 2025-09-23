@@ -1,4 +1,5 @@
 import os, time, random, csv, sys
+from datetime import datetime
 import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -78,6 +79,9 @@ driver = uc.Chrome(options=options)
 
 def collect_links(driver, bag):
     for a in driver.find_elements(By.CSS_SELECTOR, 'a[href*="/in/"]'):
+        if len(bag) >= 100:
+            break
+
         href = (a.get_attribute("href") or "").split("?")[0]
         if "/in/" in href:
             bag.add(href)
@@ -110,6 +114,9 @@ def scrape_people_links(driver, company_url):
         before = len(seen)  # save current count
         collect_links(driver, seen)  
 
+        if len(seen) >= 100:
+            print(f"[LIMIT] Reached maximum of {100} links for {company_url}")
+            break
         # Try to click "Show more results" if available
         grew = try_click_show_more(driver, before)
 
@@ -138,6 +145,7 @@ try:
         EC.url_contains("/feed"),
         EC.presence_of_element_located((By.CSS_SELECTOR, 'img.global-nav__me-photo'))
     ))
+
 
     file_exists = os.path.exists(MASTER_OUTFILE)
     with open(MASTER_OUTFILE, "a", newline="", encoding="utf-8") as f:
