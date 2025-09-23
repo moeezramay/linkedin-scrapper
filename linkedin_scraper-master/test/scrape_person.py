@@ -1,17 +1,56 @@
-import os, time, random, csv
+import os, time, random, csv, sys
 from datetime import datetime
 import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import StaleElementReferenceException
+
 
 
 CSV_PATH = "companies.csv"
 MASTER_OUTFILE = "companies_employees_scraped.csv"
 
-
-
 DONE_PATH = "already_scrapped_companies.txt"
+
+
+# function fix to properly handle "show more results" button
+
+def try_click_show_more(driver, before_count, wait_s=12):
+
+    meraButton = None
+    for b in driver.find_elements(By.CSS_SELECTOR, 'button.scaffold-finite-scroll__load-button')[::-1]:
+        try:
+            if b.is_displayed() and b.is_enabled() and b.get_attribute("aria-disabled") != "true":
+                meraButton = b; break
+        except StaleElementReferenceException:
+            continue
+    if not meraButton:
+        return False
+
+    # bring into view and click (JS fallback is more reliable)
+    driver.execute_script("arguments[0].scrollIntoView({block:'center'});", meraButton)
+    time.sleep(random.uniform(0.4, 0.9))
+    try:
+        driver.execute_script("arguments[0].click()", meraButton)
+    except Exception:
+        try: meraButton.click()
+        except Exception: return False
+
+    # wait for new items OR the button to go away/disable
+    try:
+        WebDriverWait(driver, wait_s).until(
+            lambda d: len(d.find_elements(By.CSS_SELECTOR, 'a[href*="/in/"]')) > before_count or
+                      not any(bb.is_displayed() and bb.is_enabled()
+                              for bb in d.find_elements(By.CSS_SELECTOR, 'button.scaffold-finite-scroll__load-button'))
+        )
+    except Exception:
+        return False
+
+    return len(driver.find_elements(By.CSS_SELECTOR, 'a[href*="/in/"]')) > before_count
+
+
+
 
 # load already done companies
 def load_done(path=DONE_PATH):
@@ -29,6 +68,10 @@ DONE = load_done()
 COMPANIES = [u for u in ALL_COMPANIES if u not in DONE]
 print(f"[INIT] {len(COMPANIES)} pending, {len(DONE)} already done")
 
+# exit if nothing to do
+if not COMPANIES:
+    print("[INIT] No pending companies. Exiting.")
+    sys.exit(0)
 
 options = uc.ChromeOptions()
 options.add_argument("--lang=en-US")
@@ -53,20 +96,37 @@ def click_show_more_if_any(driver):
         return False
 
 def scrape_people_links(driver, company_url):
-    people_url = company_url + "/people/"
+    
+    #Incase of direct links for geographic location like getting people from USA
+    if '/people/' in company_url:
+        people_url = company_url
+    else:
+        people_url = company_url.rstrip("/") + "/people/"
     driver.get(people_url)
     WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.CSS_SELECTOR, "main")))
+
     seen, last, stagnant = set(), 0, 0
+
     while stagnant < 3:
-        collect_links(driver, seen)
-        clicked = click_show_more_if_any(driver)
-        if not clicked:
+        before = len(seen)  # save current count
+        collect_links(driver, seen)  
+
+        # Try to click "Show more results" if available
+        grew = try_click_show_more(driver, before)
+
+        if not grew:  # scroll manually if prev didnt grow
             driver.execute_script("window.scrollBy(0, document.body.scrollHeight);")
             time.sleep(random.uniform(1.0, 1.7))
+
+        collect_links(driver, seen)  # collect after scroll
+
+        print(f"[LOOP] {company_url} | links={len(seen)}")
+
         if len(seen) == last:
-            stagnant += 1
+            stagnant += 1  # no change in links, increase stagnant 
         else:
-            last, stagnant = len(seen), 0
+            last, stagnant = len(seen), 0  # reset stagnant count on growth
+
     return sorted(seen)
 
 try:
