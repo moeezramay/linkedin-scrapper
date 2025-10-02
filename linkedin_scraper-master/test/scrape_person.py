@@ -60,7 +60,7 @@ def try_click_show_more(driver, before_count, wait_s=12):
         return False
     return len(driver.find_elements(By.CSS_SELECTOR, 'a[href*="/in/"]')) > before_count
 
-def scrape_and_stream(driver, company_url, writer, f_csv):
+def scrape_and_stream(driver, company_url, writer, f_csv): 
     people_url = company_url if '/people/' in company_url else company_url.rstrip('/') + '/people/'
     driver.get(people_url)
     WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.CSS_SELECTOR, "main")))
