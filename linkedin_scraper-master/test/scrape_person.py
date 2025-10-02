@@ -7,9 +7,9 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import StaleElementReferenceException
 
 
-CSV_PATH = "companies.csv"
+CSV_PATH = "companies/companies.csv"
 MASTER_OUTFILE = "companies_employees_scraped.csv"
-DONE_PATH = "already_scrapped_companies.txt"
+DONE_PATH = "companies/already_scrapped_companies.txt"
 
 def load_done(path=DONE_PATH):
     if os.path.exists(path):
@@ -23,17 +23,20 @@ with open(CSV_PATH, newline="", encoding="utf-8") as f:
 DONE = load_done()
 COMPANIES = [u for u in ALL_COMPANIES if u not in DONE]
 if not COMPANIES:
+    print("Already scrapped all")
     sys.exit(0)
 
 options = uc.ChromeOptions()
 options.add_argument("--lang=en-US")
 driver = uc.Chrome(options=options)
 
+#to keep saving progress
 def _safe_write(writer, f, row):
     writer.writerow(row)
     f.flush(); os.fsync(f.fileno())
 
-def try_click_show_more(driver, before_count, wait_s=12):
+#show more button clicking fixed
+def show_more(driver, before_count, wait_s=12):
     btn = None
     for b in driver.find_elements(By.CSS_SELECTOR, 'button.scaffold-finite-scroll__load-button')[::-1]:
         try:
@@ -60,6 +63,7 @@ def try_click_show_more(driver, before_count, wait_s=12):
         return False
     return len(driver.find_elements(By.CSS_SELECTOR, 'a[href*="/in/"]')) > before_count
 
+#general scrape
 def scrape_and_stream(driver, company_url, writer, f_csv): 
     people_url = company_url if '/people/' in company_url else company_url.rstrip('/') + '/people/'
     driver.get(people_url)
@@ -76,15 +80,16 @@ def scrape_and_stream(driver, company_url, writer, f_csv):
                     _safe_write(writer, f_csv, [company_url, ""])
                     wrote_header = True
                 _safe_write(writer, f_csv, ["", href])
-        grew = try_click_show_more(driver, before)
+        grew = show_more(driver, before)
         if not grew:
             driver.execute_script("window.scrollBy(0, document.body.scrollHeight);")
             time.sleep(random.uniform(1.0, 1.7))
         stagnant = stagnant + 1 if len(seen) == last else 0
         last = len(seen)
     if wrote_header:
-        _safe_write(writer, f_csv, ["", ""])  # section separator
+        _safe_write(writer, f_csv, ["", ""])  
 
+#logging in
 try:
     driver.get("https://www.linkedin.com/login")
     WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.NAME, "session_key")))
